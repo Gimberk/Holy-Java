@@ -4,7 +4,10 @@ program: line* EOF;
 
 line: statement;
 
-statement: (varReassignment | varAssignment | varDeclaration);
+statement: (varKeywords | funcKeywords);
+
+varKeywords: (varReassignment | varAssignment | varDeclaration);
+funcKeywords: (funcDefinition | funcCall);
 
 varReassignment: IDENTIFIER '=' expression ';';
 varAssignment: varParameter '=' expression ';';
@@ -12,9 +15,20 @@ varDeclaration: varParameter ';';
 varParameter: varType IDENTIFIER;
 varType: PRIMATIVE_INT | PRIMATIVE_STRING | PRIMATIVE_FLOAT | PRIMATIVE_BOOL;
 
+/*
+func MyFunction (int age, string name) -> int 
+{
+	Stuff
+}
+*/
+
+funcDefinition: 'func' IDENTIFIER '(' (varDeclaration? (',' varDeclaration)*)? ')' (ARROW_OP varType)? block;
+funcCall: IDENTIFIER '(' (expression (',' expression)*)? ')' ';';
+
 expression
 : constant								#constantExpression
 | IDENTIFIER							#identifierExpression
+| funcCall								#funcCallExpression
 | expression multOp expression          #multiplicativeExpression
 | expression comparisonOps expression   #comparisonExpression
 | expression addOp expression	        #additiveExpression
@@ -24,6 +38,8 @@ multOp: '*' | '/';
 addOp: '+' | '-';
 comparisonOps: '<' | '>' | '<=' | '>=' | '==' | '!=';
 constant: INT | STRING | FLOAT | BOOL | NULL;
+
+ARROW_OP: '->';
 
 PRIMATIVE_INT: 'int';
 PRIMATIVE_FLOAT: 'float';
