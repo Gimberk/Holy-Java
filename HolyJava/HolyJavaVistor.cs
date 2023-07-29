@@ -10,16 +10,38 @@ namespace HolyJava
         INT, FLOAT, STRING, BOOL, NULL
     }
 
+    internal struct Scope
+    {
+        public string master;
+        public bool dead;
+
+        public Scope(string master, bool dead)
+        {
+            this.master = master; this.dead = dead;
+        }
+    }
+
+    internal struct IfStatement
+    {
+        public int identifier;
+
+        public IfStatement(int identifier)
+        {
+            this.identifier = identifier;
+        }
+    }
+
     internal class Variable
     {
         public string Name { get; set; }
         public object? Value { get; set; }
 
         public Types Type { get; set; }
+        public Scope Scope { get; set; }
 
-        public Variable(string name, Types type, object? value = null)
+        public Variable(string name, Types type, Scope scope, object? value = null)
         {
-            Name = name; Type = type; Value = value;
+            Name = name; Type = type; Value = value; Scope = scope;
         }
     }
 
@@ -34,7 +56,7 @@ namespace HolyJava
         public HolyJavaParser.BlockContext? BlockContext { get; set; }
 
         public Function
-            (string name, Types returnType, Dictionary<string, Variable> arguments, 
+            (string name, Types returnType, Dictionary<string, Variable> arguments,
             HolyJavaParser.BlockContext? blockContext)
         {
             Name = name; ReturnType = returnType; Arguments = arguments; BlockContext = blockContext;
@@ -48,7 +70,9 @@ namespace HolyJava
         #region Data
         private readonly Dictionary<string, Variable> Variables = new();
         private readonly Dictionary<string, Function> Functions = new();
+        private readonly Dictionary<int, IfStatement> IfStatements = new();
 
+        private string oneTimeCreator = string.Empty;
         private Function? currentFunction = null;
         #endregion
 
@@ -57,12 +81,98 @@ namespace HolyJava
             // Init stuff
             Dictionary<string, Variable> printfArgs = new()
             {
-                { "msg", new("msg", Types.STRING) }
+                { "msg", new("msg", Types.STRING, new Scope()) }
             };
             Functions.Add("Printf", new("Printf", Types.NULL, printfArgs, null));
         }
 
         #region Logic
+
+        public override object? VisitIfLogic([NotNull] HolyJavaParser.IfLogicContext context)
+        {
+            if (Visit(context.expression()) == null)
+            {
+                throw new Exception("Invalid syntax.");
+            }
+
+            if ((bool)Visit(context.expression()))
+            {
+                string temp = oneTimeCreator;
+                int index = IfStatements.Count - 1;
+                IfStatements.Add(index, new IfStatement(index));
+                oneTimeCreator = index.ToString();
+                Visit(context.block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master == 
+                        IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
+                    {
+                        var.Scope = new Scope(oneTimeCreator, true);
+                    }
+                }
+
+                oneTimeCreator = temp;
+            }
+            else if (context.elseIfLogic().Length > 0)
+            {
+                bool succeeded = false;
+
+                foreach (var elseIf in context.elseIfLogic())
+                {
+                    if (Visit(elseIf.expression()) == null)
+                    {
+                        throw new Exception("Invalid syntax.");
+                    }
+
+                    if ((bool)Visit(elseIf.expression()))
+                    {
+                        string temp = oneTimeCreator;
+                        int index = IfStatements.Count - 1;
+                        IfStatements.Add(index, new IfStatement(index));
+                        oneTimeCreator = index.ToString();
+                        Visit(elseIf.block());
+
+                        foreach (Variable var in Variables.Values)
+                        {
+                            if (var.Scope.master == 
+                                IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
+                            {
+                                var.Scope = new Scope(oneTimeCreator, true);
+                            }
+                        }
+
+                        oneTimeCreator = temp;
+                        succeeded = true;
+                        break;
+                    }
+                }
+
+                if (!succeeded)
+                    Visit(context.elseLogic().block());
+            }
+            else if (context.elseLogic() != null)
+            {
+                string temp = oneTimeCreator;
+                int index = IfStatements.Count - 1;
+                IfStatements.Add(index, new IfStatement(index));
+                oneTimeCreator = index.ToString();
+                Visit(context.elseLogic().block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master ==
+                        IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
+                    {
+                        var.Scope = new Scope(oneTimeCreator, true);
+                    }
+                }
+
+                oneTimeCreator = temp;
+            }
+
+            return null;
+        }
 
         public override object? VisitReturnStatement
             ([NotNull] HolyJavaParser.ReturnStatementContext context)
@@ -97,7 +207,10 @@ namespace HolyJava
             string name = context.varParameter().IDENTIFIER().GetText();
 
             if (Variables.ContainsKey(name))
-                return null;
+            {
+                if (!Variables[name].Scope.dead)
+                    throw new Exception($"Variable \"{name}\" already exists.");
+            }
 
             string typeText = context.varParameter().varType().GetText();
 
@@ -110,8 +223,15 @@ namespace HolyJava
                 _ => throw new Exception("Invalid type.")
             };
 
-            Variable var = new(name, type);
-            Variables.Add(name, var);
+
+
+            Variable var = new(name, type, new Scope(oneTimeCreator, false));
+            if (Variables.ContainsKey(name))
+                Variables[name] = var;
+            else
+            {
+                Variables.Add(name, var);
+            }
 
             return null;
         }
@@ -122,7 +242,10 @@ namespace HolyJava
             string name = context.varParameter().IDENTIFIER().GetText();
 
             if (Variables.ContainsKey(name))
-                return null;
+            {
+                if (!Variables[name].Scope.dead)
+                    throw new Exception($"Variable \"{name}\" already exists.");
+            }
 
             object? value = Visit(context.expression());
 
@@ -137,9 +260,13 @@ namespace HolyJava
                 _ => throw new Exception("Invalid type.")
             };
 
-            Variable var = new(name, type);
-            Variables.Add(name, var);
-
+            Variable var = new(name, type, new Scope(oneTimeCreator, false), value);
+            if (Variables.ContainsKey(name))
+                Variables[name] = var;
+            else
+            {
+                Variables.Add(name, var);
+            }
             return null;
         }
 
@@ -537,15 +664,6 @@ namespace HolyJava
         public override object VisitConstantExpression
             ([NotNull] HolyJavaParser.ConstantExpressionContext context)
         {
-            //string text;
-
-            //if (context.constant().INT().GetText()[0] == '-')
-            //{
-            //    text = context.constant().INT().GetText()[1..];
-            //}
-            //else
-            //    text = context.constant().INT().GetText();
-
             if (context.constant().INT() is { } i)
             {
                 string text;
@@ -556,8 +674,6 @@ namespace HolyJava
                 }
                 else
                     text = i.GetText();
-
-                Console.WriteLine("Yes: " + text);
 
                 return int.Parse(text);
             }
@@ -572,8 +688,6 @@ namespace HolyJava
                 }
                 else
                     text = f.GetText();
-
-                Console.WriteLine("Yes: " + text);
 
                 return float.Parse(text);
             }
@@ -600,6 +714,12 @@ namespace HolyJava
                 {
                     return currentFunction.Arguments[name].Value;
                 }
+            }
+
+            if (Variables.ContainsKey(name))
+            {
+                if (Variables[name].Scope.dead)
+                    throw new Exception($"Variable \"{name}\" cannot be accessed while out of scope.");
             }
 
             if (Variables.ContainsKey(name))
@@ -699,7 +819,7 @@ namespace HolyJava
                     _ => throw new NotImplementedException()
                 };
 
-                args.Add(varName, new(varName, varType));
+                args.Add(varName, new(varName, varType, new Scope(oneTimeCreator, false)));
             }
 
             Function func = new(name, type, args, context.block());
@@ -731,11 +851,31 @@ namespace HolyJava
                 index++;
             }
 
+            Function? tempFunc = currentFunction;
             currentFunction = func;
 
             if (func.BlockContext != null)
             {
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master == oneTimeCreator)
+                        var.Scope = new Scope(oneTimeCreator, true);
+                }
+
+                string temp = oneTimeCreator;
+                oneTimeCreator = name;
                 Visit(func.BlockContext);
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master == oneTimeCreator)
+                        var.Scope = new Scope(oneTimeCreator, true);
+
+                    if (var.Scope.master == temp)
+                        var.Scope = new Scope(temp, false);
+                }
+
+                oneTimeCreator = temp;
 
                 if (func.ReturnType != Types.NULL)
                 {
@@ -756,7 +896,7 @@ namespace HolyJava
                 }
             }
 
-            currentFunction = null;
+            currentFunction = tempFunc;
             return null;
         }
 

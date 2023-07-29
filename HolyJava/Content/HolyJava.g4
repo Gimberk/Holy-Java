@@ -1,10 +1,10 @@
-﻿grammar HolyJava;
+﻿﻿grammar HolyJava;
 
 program: line* EOF;
 
 line: statement;
 
-statement: (varKeywords | funcKeywords | returnStatement);
+statement: (varKeywords | funcKeywords | returnStatement | ifLogic);
 
 varKeywords: (varReassignment | varAssignment | varDeclaration);
 funcKeywords: (funcDefinition | funcCall);
@@ -16,6 +16,10 @@ varAssignment: varParameter '=' expression ';';
 varDeclaration: varParameter ';';
 varParameter: varType IDENTIFIER;
 varType: PRIMATIVE_INT | PRIMATIVE_STRING | PRIMATIVE_FLOAT | PRIMATIVE_BOOL;
+
+ifLogic: 'if' '(' expression ')' block elseIfLogic* elseLogic?;
+elseIfLogic: 'else if' '(' expression ')' block;
+elseLogic: 'else' block;
 
 funcDefinition: 'func' IDENTIFIER '(' (varDeclaration (',' varDeclaration)*)? ')' ('->' varType)? block;
 funcCall: IDENTIFIER '(' (expression (',' expression)*)? ')' ';';
