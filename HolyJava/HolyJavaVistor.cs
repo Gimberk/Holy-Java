@@ -1,12 +1,5 @@
 ﻿using Antlr4.Runtime.Misc;
 using HolyJava.Content;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection.Metadata;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml.Linq;
 
 namespace HolyJava
 {
@@ -68,6 +61,19 @@ namespace HolyJava
             };
             Functions.Add("Printf", new("Printf", Types.NULL, printfArgs, null));
         }
+
+        #region Logic
+
+        public override object? VisitReturnStatement
+            ([NotNull] HolyJavaParser.ReturnStatementContext context)
+        {
+            if (currentFunction == null)
+                throw new Exception("Keyword \"return\" cannot be used outside of a function.");
+
+            currentFunction.ReturnValue = Visit(context.expression());
+            return null;
+        }
+        #endregion
 
         #region Built-In
 
@@ -150,27 +156,427 @@ namespace HolyJava
 
         #endregion
 
-        #region Logic
+        #region Math
 
-        public override object? VisitIdentifierExpression
-            ([NotNull] HolyJavaParser.IdentifierExpressionContext context)
+        public static object NE_Compare(object left, object right)
         {
-            string name = context.IDENTIFIER().GetText();
 
-            if (!Variables.ContainsKey(name))
-                throw new Exception("No variable found with identifier " + name);
+            if (left is int l && right is int r)
+            {
 
-            return Variables[name].Value;
+                if (l != r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF != rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI != RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF != rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
         }
 
-        public override object? VisitConstantExpression
+        public static object EE_Compare(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+            {
+
+                if (l == r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF == rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI == RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF == rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
+        }
+
+        public static object L_Compare(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+            {
+
+                if (l < r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF < rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI < RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF < rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
+        }
+
+        public static object LE_Compare(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+            {
+
+                if (l <= r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF <= rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI <= RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF <= rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
+        }
+
+        public static object G_Compare(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+            {
+
+                if (l > r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF > rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI > RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF > rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
+        }
+
+        public static object GE_Compare(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+            {
+
+                if (l >= r)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float lF && right is float rF)
+            {
+
+                if (lF >= rF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is int lI && right is float RF)
+            {
+
+                if (lI >= RF)
+                    return true;
+                return false;
+
+            }
+
+            if (left is float LF && right is int rI)
+            {
+
+                if (LF >= rI)
+                    return true;
+                return false;
+
+            }
+
+            throw new Exception("Cannot compare the types of " + left.GetType() + " and " + right.GetType());
+
+        }
+
+        public static object Mul(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+                return l * r;
+
+            if (left is float lF && right is float rF)
+                return lF * rF;
+
+            if (left is float lFloat && right is int rInt)
+                return lFloat * rInt;
+
+            if (left is int lInt && right is float rFloat)
+                return lInt * rFloat;
+
+            throw new NotImplementedException();
+
+        }
+
+        public static object Div(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+                return l / r;
+
+            if (left is float lF && right is float rF)
+                return lF / rF;
+
+            if (left is float lFloat && right is int rInt)
+                return lFloat / rInt;
+
+            if (left is int lInt && right is float rFloat)
+                return lInt / rFloat;
+
+            throw new NotImplementedException();
+
+        }
+
+        public static object Sub(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+                return l - r;
+
+            if (left is float lF && right is float rF)
+                return lF - rF;
+
+            if (left is float lFloat && right is int rInt)
+                return lFloat - rInt;
+
+            if (left is int lInt && right is float rFloat)
+                return lInt - rFloat;
+
+            throw new NotImplementedException();
+
+        }
+
+        public static object Add(object left, object right)
+        {
+
+            if (left is int l && right is int r)
+                return l + r;
+
+            if (left is float lF && right is float rF)
+                return lF + rF;
+
+            if (left is float lFloat && right is int rInt)
+                return lFloat + rInt;
+
+            if (left is int lInt && right is float rFloat)
+                return lInt + rFloat;
+
+            if (left is string lString && right is string rString)
+                return lString + rString;
+
+            if (left is string lStringS && right is int rIntS)
+                return $"{lStringS}{rIntS}";
+
+            if (left is int lIntI && right is string rStringI)
+                return $"{lIntI}{rStringI}";
+
+            if (left is string lStringF && right is float rFloatF)
+                return $"{lStringF}{rFloatF}";
+
+            if (left is float lFloatF && right is string rStringF)
+                return $"{lFloatF}{rStringF}";
+
+            throw new Exception($"Cannot add the values of types {left.GetType()} and {right.GetType()}");
+
+        }
+
+        public override object VisitComparisonExpression
+            ([NotNull] HolyJavaParser.ComparisonExpressionContext context)
+        {
+
+            var left = Visit(context.expression(0));
+            var right = Visit(context.expression(1));
+
+            var op = context.comparisonOps().GetText();
+
+            if (left == null || right == null)
+                throw new Exception("Invalid math operation.");
+
+            return op switch
+            {
+
+                "==" => EE_Compare(left, right),
+                "!=" => NE_Compare(left, right),
+                "<" => L_Compare(left, right),
+                "<=" => LE_Compare(left, right),
+                ">" => G_Compare(left, right),
+                ">=" => GE_Compare(left, right),
+                _ => throw new Exception("Unexpected comparison operator")
+
+            };
+
+        }
+
+        public override object VisitConstantExpression
             ([NotNull] HolyJavaParser.ConstantExpressionContext context)
         {
+            //string text;
+
+            //if (context.constant().INT().GetText()[0] == '-')
+            //{
+            //    text = context.constant().INT().GetText()[1..];
+            //}
+            //else
+            //    text = context.constant().INT().GetText();
+
             if (context.constant().INT() is { } i)
-                return int.Parse(i.GetText());
+            {
+                string text;
+
+                if (i.GetText()[0] == '-')
+                {
+                    text = i.GetText()[1..];
+                }
+                else
+                    text = i.GetText();
+
+                Console.WriteLine("Yes: " + text);
+
+                return int.Parse(text);
+            }
 
             if (context.constant().FLOAT() is { } f)
-                return float.Parse(f.GetText());
+            {
+                string text;
+
+                if (f.GetText()[0] == '-')
+                {
+                    text = f.GetText()[1..];
+                }
+                else
+                    text = f.GetText();
+
+                Console.WriteLine("Yes: " + text);
+
+                return float.Parse(text);
+            }
 
             if (context.constant().STRING() is { } s)
                 return s.GetText()[1..^1];
@@ -179,6 +585,75 @@ namespace HolyJava
                 return bool.Parse(b.GetText());
 
             throw new NotImplementedException();
+
+        }
+
+        public override object? VisitIdentifierExpression
+            ([NotNull] HolyJavaParser.IdentifierExpressionContext context)
+        {
+
+            string name = context.IDENTIFIER().GetText();
+
+            if (currentFunction != null)
+            {
+                if (currentFunction.Arguments.ContainsKey(name))
+                {
+                    return currentFunction.Arguments[name].Value;
+                }
+            }
+
+            if (Variables.ContainsKey(name))
+            {
+                return Variables[name].Value;
+            }
+
+            throw new Exception("No variable found with identifer " + name);
+        }
+
+        public override object VisitAdditiveExpression
+            ([NotNull] HolyJavaParser.AdditiveExpressionContext context)
+        {
+
+            var left = Visit(context.expression(0));
+            var op = context.addOp().GetText();
+
+            var right = Visit(context.expression(1));
+
+            if (left == null || right == null)
+                throw new Exception("Invalid math operation.");
+
+            return op switch
+            {
+
+                "+" => Add(left, right),
+                "-" => Sub(left, right),
+                _ => throw new NotImplementedException()
+
+            };
+
+        }
+
+        public override object VisitMultiplicativeExpression
+            ([NotNull] HolyJavaParser.MultiplicativeExpressionContext context)
+        {
+
+            var left = Visit(context.expression(0));
+            var right = Visit(context.expression(1));
+
+            var op = context.multOp().GetText();
+
+            if (left == null || right == null)
+                throw new Exception("Invalid math operation.");
+
+            return op switch
+            {
+
+                "*" => Mul(left, right),
+                "/" => Div(left, right),
+                _ => throw new NotImplementedException()
+
+            };
+
         }
 
         #endregion
@@ -197,7 +672,6 @@ namespace HolyJava
             if (context.varType() != null)
             {
                 string typeText = context.varType().GetText();
-
                 type = typeText switch
                 {
                     "int" => Types.INT,

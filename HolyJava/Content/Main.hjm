@@ -1,1 +1,6 @@
-﻿Printf("HI");
+﻿func Add(int a, int b) -> int
+{
+	return a + b;
+}
+
+Printf(Add(1, 2));
