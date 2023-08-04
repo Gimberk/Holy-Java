@@ -1,31 +1,30 @@
-﻿int a = 5;
-
-func SayMyName (string name) -> string 
+﻿abstract class MyClass
 {
-	float d = 5.543;
-	Printf(d);
-	return name;
+	string name = "My Name is not that fam";
+
+    abstract func Func() -> string;
 }
 
-if (a == 5)
+abstract class NewClass extends MyClass
 {
-	int c = 675868;
-	Printf(c);
-
-	if (c == 675868)
+	override func Func() -> string
 	{
-		string name = "James";
-		Printf(name);
+		return "HI, my name is not Andrew!";
 	}
-
-	Printf(SayMyName("Andrew"));
-	Printf(d);
-
-	a = 7;
 }
-else
+
+class NewerClass extends NewClass
 {
-	a = 5;
+	string name2 = "fewihf";
+
+	func Funcg() -> string
+	{
+		return "Yes";
+	}
 }
 
-Printf(a);
+NewerClass myClass;
+Printf(myClass.name2);
+Printf(myClass.name);
+Printf(myClass.Func());
+Printf(myClass.Funcg());

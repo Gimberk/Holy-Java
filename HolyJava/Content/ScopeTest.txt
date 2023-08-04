@@ -1,0 +1,31 @@
+﻿int a = 5;
+
+func SayMyName (string name) -> string 
+{
+	float d = 5.543;
+	Printf(d);
+	return name;
+}
+
+if (a == 5)
+{
+	int c = 675868;
+	Printf(c);
+
+	if (c == 675868)
+	{
+		string name = "James";
+		Printf(name);
+	}
+
+	Printf(SayMyName("Andrew"));
+	Printf(d);
+
+	a = 7;
+}
+else
+{
+	a = 5;
+}
+
+Printf(a);

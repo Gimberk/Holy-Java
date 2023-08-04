@@ -21,13 +21,38 @@ namespace HolyJava
         }
     }
 
-    internal struct IfStatement
+    internal struct Statement
     {
         public int identifier;
 
-        public IfStatement(int identifier)
+        public Statement(int identifier)
         {
             this.identifier = identifier;
+        }
+    }
+
+    internal class Class
+    {
+        public string Name { get; set; }
+        public bool Abstract;
+
+        public Dictionary<string, Variable> Variables { get; private set; } = new();
+        public Dictionary<string, Function> Functions { get; private set; } = new();
+
+        public Class(string name, bool @abstract)
+        {
+            Name = name; Abstract = @abstract;
+        }
+    }
+
+    internal class ClassVar
+    {
+        public string Name;
+        public Class ClassRef;
+
+        public ClassVar(string name, Class classRef)
+        {
+            Name = name; ClassRef = classRef;
         }
     }
 
@@ -48,8 +73,11 @@ namespace HolyJava
     internal class Function
     {
         public string Name { get; set; }
-        public Types ReturnType { get; set; }
         public object? ReturnValue { get; set; } = null;
+        public bool Virtual;
+        public bool Abstract;
+
+        public Types ReturnType { get; set; }
 
         public Dictionary<string, Variable> Arguments { get; set; }
 
@@ -57,9 +85,10 @@ namespace HolyJava
 
         public Function
             (string name, Types returnType, Dictionary<string, Variable> arguments,
-            HolyJavaParser.BlockContext? blockContext)
+            HolyJavaParser.BlockContext? blockContext, bool @virtual, bool @abstract)
         {
             Name = name; ReturnType = returnType; Arguments = arguments; BlockContext = blockContext;
+            Virtual = @virtual; Abstract = @abstract;
         }
     }
 
@@ -70,10 +99,14 @@ namespace HolyJava
         #region Data
         private readonly Dictionary<string, Variable> Variables = new();
         private readonly Dictionary<string, Function> Functions = new();
-        private readonly Dictionary<int, IfStatement> IfStatements = new();
+        private readonly Dictionary<string, Class> Classes = new();
+        private readonly Dictionary<string, ClassVar> ClassVars = new();
+        private readonly Dictionary<int, Statement> IfStatements = new();
+        private readonly Dictionary<int, Statement> ForLoops = new();
 
-        private string oneTimeCreator = string.Empty;
+        private string currentScope = string.Empty;
         private Function? currentFunction = null;
+        private Function? currentClassFunction = null;
         #endregion
 
         public HolyJavaVistor()
@@ -83,107 +116,9 @@ namespace HolyJava
             {
                 { "msg", new("msg", Types.STRING, new Scope()) }
             };
-            Functions.Add("Printf", new("Printf", Types.NULL, printfArgs, null));
+            Functions.Add("Printf", new("Printf", Types.NULL, printfArgs, null,
+                false, false));
         }
-
-        #region Logic
-
-        public override object? VisitIfLogic([NotNull] HolyJavaParser.IfLogicContext context)
-        {
-            if (Visit(context.expression()) == null)
-            {
-                throw new Exception("Invalid syntax.");
-            }
-
-            if ((bool)Visit(context.expression()))
-            {
-                string temp = oneTimeCreator;
-                int index = IfStatements.Count - 1;
-                IfStatements.Add(index, new IfStatement(index));
-                oneTimeCreator = index.ToString();
-                Visit(context.block());
-
-                foreach (Variable var in Variables.Values)
-                {
-                    if (var.Scope.master == 
-                        IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
-                    {
-                        var.Scope = new Scope(oneTimeCreator, true);
-                    }
-                }
-
-                oneTimeCreator = temp;
-            }
-            else if (context.elseIfLogic().Length > 0)
-            {
-                bool succeeded = false;
-
-                foreach (var elseIf in context.elseIfLogic())
-                {
-                    if (Visit(elseIf.expression()) == null)
-                    {
-                        throw new Exception("Invalid syntax.");
-                    }
-
-                    if ((bool)Visit(elseIf.expression()))
-                    {
-                        string temp = oneTimeCreator;
-                        int index = IfStatements.Count - 1;
-                        IfStatements.Add(index, new IfStatement(index));
-                        oneTimeCreator = index.ToString();
-                        Visit(elseIf.block());
-
-                        foreach (Variable var in Variables.Values)
-                        {
-                            if (var.Scope.master == 
-                                IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
-                            {
-                                var.Scope = new Scope(oneTimeCreator, true);
-                            }
-                        }
-
-                        oneTimeCreator = temp;
-                        succeeded = true;
-                        break;
-                    }
-                }
-
-                if (!succeeded)
-                    Visit(context.elseLogic().block());
-            }
-            else if (context.elseLogic() != null)
-            {
-                string temp = oneTimeCreator;
-                int index = IfStatements.Count - 1;
-                IfStatements.Add(index, new IfStatement(index));
-                oneTimeCreator = index.ToString();
-                Visit(context.elseLogic().block());
-
-                foreach (Variable var in Variables.Values)
-                {
-                    if (var.Scope.master ==
-                        IfStatements[int.Parse(oneTimeCreator)].identifier.ToString())
-                    {
-                        var.Scope = new Scope(oneTimeCreator, true);
-                    }
-                }
-
-                oneTimeCreator = temp;
-            }
-
-            return null;
-        }
-
-        public override object? VisitReturnStatement
-            ([NotNull] HolyJavaParser.ReturnStatementContext context)
-        {
-            if (currentFunction == null)
-                throw new Exception("Keyword \"return\" cannot be used outside of a function.");
-
-            currentFunction.ReturnValue = Visit(context.expression());
-            return null;
-        }
-        #endregion
 
         #region Built-In
 
@@ -197,6 +132,434 @@ namespace HolyJava
 
         #endregion
 
+        #endregion
+
+        #region Classes
+
+        public override object? VisitClassDef([NotNull] HolyJavaParser.ClassDefContext context)
+        {
+            string name = context.IDENTIFIER(0).GetText();
+            bool @abstract = context.abstractKeyword() != null;
+            Class newClass = new(name, @abstract);
+
+            if (context.IDENTIFIER(1) != null)
+            {
+                if (!Classes.ContainsKey(context.IDENTIFIER(1).GetText()))
+                    throw new Exception("Cannot find class \"" + context.IDENTIFIER(1).GetText() + "\"");
+                Class extendedClass = Classes[context.IDENTIFIER(1).GetText()];
+
+                if (!extendedClass.Abstract)
+                    throw new Exception("Cannot extend a class that is not marked as abstract.");
+
+                foreach (Variable var in extendedClass.Variables.Values)
+                {
+                    newClass.Variables.Add(var.Name, var);
+                }
+
+                foreach (Function func in extendedClass.Functions.Values)
+                {
+                    newClass.Functions.Add(func.Name, func);
+                }
+            }
+
+            foreach (var statement in context.topLevelStatements())
+            {
+                if (statement.funcDefinition() != null)
+                {
+                    string funcName = statement.funcDefinition().IDENTIFIER().GetText();
+                    Types returnType = Types.NULL;
+
+                    bool funcAbstract = statement.funcDefinition().abstractKeyword() != null;
+                    bool @virtual = statement.funcDefinition().virtualKeyword() != null;
+                    bool @override = statement.funcDefinition().overrideKeyword() != null;
+
+                    if ((funcAbstract || @virtual) && @override)
+                        throw new Exception($"Function \"{funcName}\" cannot override a " +
+                                "function because it is marked as either abstract or virtual.");
+
+                    if (funcAbstract)
+                    {
+                        if (statement.funcDefinition().block() != null)
+                            throw new Exception($"Function \"{funcName}\" cannot have a " +
+                                "body because it is marked as abstract.");
+                    }
+                    else
+                    {
+                        if (statement.funcDefinition().block() == null)
+                            throw new Exception($"Function \"{funcName}\" must have a " +
+                                "body as it is not marked as abstract.");
+                    }
+
+                    if (statement.funcDefinition().varType() != null)
+                    {
+                        string typeText = statement.funcDefinition().varType().GetText();
+                        returnType = typeText switch
+                        {
+                            "int" => Types.INT,
+                            "float" => Types.FLOAT,
+                            "string" => Types.STRING,
+                            "bool" => Types.BOOL,
+                            _ => throw new Exception("Invalid return type.")
+                        };
+                    }
+
+                    Dictionary<string, Variable> args = new();
+
+                    foreach (var arg in statement.funcDefinition().varDeclaration())
+                    {
+                        string varName = arg.varParameter().IDENTIFIER().GetText();
+
+                        string typeText = arg.varParameter().varType().GetText();
+
+                        Types varType = typeText switch
+                        {
+                            "int" => Types.INT,
+                            "float" => Types.FLOAT,
+                            "string" => Types.STRING,
+                            "bool" => Types.BOOL,
+                            _ => throw new NotImplementedException()
+                        };
+
+                        args.Add(varName, new(varName, varType, new Scope(currentScope, false)));
+                    }
+
+                    if (@virtual && funcAbstract)
+                        throw new Exception($"Function \"{funcName}\" " +
+                            "cannot be both abstract and virtual.");
+
+                    if (@override)
+                    {
+                        if (newClass.Functions.ContainsKey(funcName))
+                        {
+                            Function function = newClass.Functions[funcName];
+                            if (function.Abstract || function.Virtual)
+                            {
+                                // Verify that the Functions match
+                                if (returnType != function.ReturnType)
+                                    throw new Exception("Function override does not match" +
+                                        " abstract or virtual method.");
+
+                                if (args.Count != function.Arguments.Count)
+                                    throw new Exception("Function override does not match" +
+                                        " abstract or virtual method.");
+
+                                foreach (Variable var in args.Values)
+                                {
+                                    if (!function.Arguments.ContainsKey(var.Name))
+                                        throw new Exception("Function override does not match" +
+                                            " abstract or virtual method.");
+
+                                    Variable funcVar = function.Arguments[var.Name];
+
+                                    if (funcVar.Type != var.Type)
+                                        throw new Exception("Function override does not match" +
+                                            " abstract or virtual method.");
+                                }
+
+                                function.BlockContext = statement.funcDefinition().block();
+                            }
+                            else
+                                throw new Exception("Cannot override a method that is not marked as " +
+                                    "either abstract or virtual.");
+                        }
+                        else
+                            throw new Exception("Cannot override a method that does not exist in the" +
+                                " current context.");
+                    }
+                    else
+                    {
+                        if (newClass.Functions.ContainsKey(funcName))
+                            throw new Exception($"{funcName} already exists.");
+
+                        Function func = new(funcName, returnType, args,
+                            statement.funcDefinition().block(), @virtual, funcAbstract);
+                        newClass.Functions.Add(funcName, func);
+                    }
+                }
+                else if (statement.varAssignment() != null)
+                {
+                    string varName = statement.varAssignment().varParameter().IDENTIFIER().GetText();
+
+                    if (newClass.Variables.ContainsKey(varName))
+                        throw new Exception($"A variable with the name {varName} already exists.");
+
+                    object? value = Visit(statement.varAssignment().expression());
+
+                    string typeText = statement.varAssignment().varParameter().varType().GetText();
+
+                    Types type = typeText switch
+                    {
+                        "int" => Types.INT,
+                        "float" => Types.FLOAT,
+                        "string" => Types.STRING,
+                        "bool" => Types.BOOL,
+                        _ => throw new Exception("Invalid type.")
+                    };
+
+                    newClass.Variables.Add(varName, new(varName, type, new Scope(), value));
+                }
+                else if (statement.varDeclaration() != null)
+                {
+                    string varName = statement.varDeclaration().varParameter().IDENTIFIER().GetText();
+
+                    if (newClass.Variables.ContainsKey(varName))
+                        throw new Exception($"A variable with the name {varName} already exists.");
+
+                    string typeText = statement.varDeclaration().varParameter().varType().GetText();
+
+                    Types type = typeText switch
+                    {
+                        "int" => Types.INT,
+                        "float" => Types.FLOAT,
+                        "string" => Types.STRING,
+                        "bool" => Types.BOOL,
+                        _ => throw new Exception("Invalid type.")
+                    };
+
+                    newClass.Variables.Add(varName, new(varName, type, new Scope()));
+                }
+            }
+
+            Classes.Add(name, newClass);
+            return null;
+        }
+
+        public override object VisitClassVar([NotNull] HolyJavaParser.ClassVarContext context)
+        {
+            string className = context.IDENTIFIER(0).GetText();
+            string name = context.IDENTIFIER(1).GetText();
+
+            if (!Classes.ContainsKey(className))
+                throw new Exception("No class found with identifier " + className);
+
+            if (Classes[className].Abstract)
+                throw new Exception("Cannot make an instance out of an abstract class.");
+
+            ClassVar var = new(name, Classes[className]);
+            ClassVars.Add(name, var);
+
+            return var.ClassRef;
+        }
+
+        public override object? VisitClassVarReassignment
+            ([NotNull] HolyJavaParser.ClassVarReassignmentContext context)
+        {
+            string className = context.IDENTIFIER(1).GetText();
+            string name = context.IDENTIFIER(0).GetText();
+
+            if (!Classes.ContainsKey(className))
+                throw new Exception("No class found with identifier " + className);
+
+            if (!ClassVars.ContainsKey(name))
+                throw new Exception("No class variable found with identifier " + name);
+
+            ClassVars[name].ClassRef = Classes[className];
+
+            return null;
+        }
+
+        public override object? VisitClassAccess
+            ([NotNull] HolyJavaParser.ClassAccessContext context)
+        {
+            string name = context.IDENTIFIER(0).GetText();
+
+            if (!ClassVars.ContainsKey(name))
+                throw new Exception("No class variable found with identifier " + name);
+
+            Class ourClass = ClassVars[name].ClassRef;
+
+            if (context.funcCall() != null)
+            {
+                if (!ourClass.Functions.ContainsKey(context.funcCall().IDENTIFIER().GetText()))
+                    throw new Exception($"Function \"{context.funcCall().IDENTIFIER().GetText()}\" " +
+                        "does not exist.");
+
+                if (ourClass.Functions[context.funcCall().IDENTIFIER().GetText()].Abstract)
+                {
+                    if (ourClass.Functions[context.funcCall().IDENTIFIER().GetText()].BlockContext == null)
+                    {
+                        throw new Exception($"Cannot call " +
+                            $"function \"{context.funcCall().IDENTIFIER().GetText()}\"" +
+                            $" as it is abstract and has not been overridden yet.");
+                    }
+                }
+
+                currentClassFunction = ourClass.Functions[context.funcCall().IDENTIFIER().GetText()];
+                object? returnValue = Visit(context.funcCall());
+                currentClassFunction = null;
+                return returnValue;
+            }
+            else if (context.IDENTIFIER(1) != null)
+            {
+                return ourClass.Variables[context.IDENTIFIER(1).GetText()].Value;
+            }
+            else if (context.varReassignment() != null)
+            {
+                Console.WriteLine("Hi");
+                return null;
+            }
+            else if (context.varAssignment() != null)
+            {
+                Console.WriteLine("Hifwe");
+                return null;
+            }
+
+            throw new Exception("Unexpected token; Expected: funcCall | " +
+                "varReassignment | varAssignment | IDENTIFIER");
+        }
+
+        #endregion
+
+        #region Logic
+
+        public override object? VisitIfLogic([NotNull] HolyJavaParser.IfLogicContext context)
+        {
+            if (Visit(context.expression()) == null)
+            {
+                throw new Exception("Invalid syntax.");
+            }
+
+            if (Convert.ToBoolean(Visit(context.expression())))
+            {
+                string temp = currentScope;
+                int index = IfStatements.Count - 1;
+                IfStatements.Add(index, new Statement(index));
+                currentScope = index.ToString();
+                Visit(context.block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master ==
+                        IfStatements[int.Parse(currentScope)].identifier.ToString())
+                    {
+                        var.Scope = new Scope(currentScope, true);
+                    }
+                }
+
+                currentScope = temp;
+            }
+            else if (context.elseIfLogic().Length > 0)
+            {
+                bool succeeded = false;
+
+                foreach (var elseIf in context.elseIfLogic())
+                {
+                    if (Visit(elseIf.expression()) == null)
+                    {
+                        throw new Exception("Invalid syntax.");
+                    }
+
+                    if (Convert.ToBoolean(Visit(elseIf.expression())))
+                    {
+                        string temp = currentScope;
+                        int index = IfStatements.Count - 1;
+                        IfStatements.Add(index, new Statement(index));
+                        currentScope = index.ToString();
+                        Visit(elseIf.block());
+
+                        foreach (Variable var in Variables.Values)
+                        {
+                            if (var.Scope.master ==
+                                IfStatements[int.Parse(currentScope)].identifier.ToString())
+                            {
+                                var.Scope = new Scope(currentScope, true);
+                            }
+                        }
+
+                        currentScope = temp;
+                        succeeded = true;
+                        break;
+                    }
+                }
+
+                if (!succeeded)
+                    Visit(context.elseLogic().block());
+            }
+            else if (context.elseLogic() != null)
+            {
+                string temp = currentScope;
+                int index = IfStatements.Count - 1;
+                IfStatements.Add(index, new Statement(index));
+                currentScope = index.ToString();
+                Visit(context.elseLogic().block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master ==
+                        IfStatements[int.Parse(currentScope)].identifier.ToString())
+                    {
+                        var.Scope = new Scope(currentScope, true);
+                    }
+                }
+
+                currentScope = temp;
+            }
+
+            return null;
+        }
+
+        public override object? VisitWhileLoop([NotNull] HolyJavaParser.WhileLoopContext context)
+        {
+            string temp = currentScope;
+            int index = ForLoops.Count;
+            ForLoops.Add(index, new Statement(index));
+            currentScope = index.ToString();
+
+            while (Convert.ToBoolean(Visit(context.expression())))
+            {
+                Visit(context.block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master == currentScope)
+                        var.Scope = new Scope(currentScope, true);
+                }
+            }
+
+            currentScope = temp;
+            return null;
+        }
+
+        public override object? VisitForLoop([NotNull] HolyJavaParser.ForLoopContext context)
+        {
+            string temp = currentScope;
+            int index = ForLoops.Count;
+            ForLoops.Add(index, new Statement(index));
+            currentScope = index.ToString();
+
+            Visit(context.varAssignment());
+            string varName = context.varAssignment().varParameter().IDENTIFIER().GetText();
+
+            while (Convert.ToBoolean(Visit(context.expression(0))))
+            {
+                Visit(context.block());
+
+                foreach (Variable var in Variables.Values)
+                {
+                    if (var.Scope.master == currentScope)
+                    {
+                        if (var.Name != varName)
+                            var.Scope = new Scope(currentScope, true);
+                    }
+                }
+
+                Variables[varName].Value = Visit(context.expression(1));
+            }
+
+            Variables[varName].Scope = new Scope(currentScope, true);
+            currentScope = temp;
+            return null;
+        }
+
+        public override object? VisitReturnStatement
+            ([NotNull] HolyJavaParser.ReturnStatementContext context)
+        {
+            if (currentFunction == null)
+                throw new Exception("Keyword \"return\" cannot be used outside of a function.");
+
+            currentFunction.ReturnValue = Visit(context.expression());
+            return null;
+        }
         #endregion
 
         #region Variables
@@ -223,9 +586,7 @@ namespace HolyJava
                 _ => throw new Exception("Invalid type.")
             };
 
-
-
-            Variable var = new(name, type, new Scope(oneTimeCreator, false));
+            Variable var = new(name, type, new Scope(currentScope, false));
             if (Variables.ContainsKey(name))
                 Variables[name] = var;
             else
@@ -260,7 +621,7 @@ namespace HolyJava
                 _ => throw new Exception("Invalid type.")
             };
 
-            Variable var = new(name, type, new Scope(oneTimeCreator, false), value);
+            Variable var = new(name, type, new Scope(currentScope, false), value);
             if (Variables.ContainsKey(name))
                 Variables[name] = var;
             else
@@ -786,8 +1147,22 @@ namespace HolyJava
             string name = context.IDENTIFIER().GetText();
             Types type = Types.NULL;
 
+            bool @abstract = context.abstractKeyword() != null;
+            bool @virtual = context.virtualKeyword() != null;
+            bool @override = context.overrideKeyword() != null;
+
+            if (@override)
+                throw new Exception($"Function \"{name}\" " +
+                    "cannot override any function because it is not contained within " +
+                    "a class.");
+
+            if (@virtual || @abstract)
+                throw new Exception($"Function \"{name}\" " +
+                    "cannot be either abstract or virtual because it is not contained within " +
+                    "an abstract class.");
+
             if (Functions.ContainsKey(name))
-                return null;
+                throw new Exception($"\"{name}\" is already defined.");
 
             if (context.varType() != null)
             {
@@ -819,10 +1194,10 @@ namespace HolyJava
                     _ => throw new NotImplementedException()
                 };
 
-                args.Add(varName, new(varName, varType, new Scope(oneTimeCreator, false)));
+                args.Add(varName, new(varName, varType, new Scope(currentScope, false)));
             }
 
-            Function func = new(name, type, args, context.block());
+            Function func = new(name, type, args, context.block(), @virtual, @abstract);
             Functions.Add(name, func);
 
             return null;
@@ -832,10 +1207,19 @@ namespace HolyJava
         {
             string name = context.IDENTIFIER().GetText();
 
-            if (!Functions.ContainsKey(name))
-                throw new Exception("No function found with identifier " + name);
+            Function func;
 
-            Function func = Functions[name];
+            if (!Functions.ContainsKey(name))
+            {
+                if (currentClassFunction != null)
+                {
+                    func = currentClassFunction;
+                }
+                else
+                    throw new Exception("No function found with identifier " + name);
+            }
+            else
+                func = Functions[name];
 
             List<object?> argValues = new();
 
@@ -858,30 +1242,29 @@ namespace HolyJava
             {
                 foreach (Variable var in Variables.Values)
                 {
-                    if (var.Scope.master == oneTimeCreator)
-                        var.Scope = new Scope(oneTimeCreator, true);
+                    if (var.Scope.master == currentScope)
+                        var.Scope = new Scope(currentScope, true);
                 }
 
-                string temp = oneTimeCreator;
-                oneTimeCreator = name;
+                string temp = currentScope;
+                currentScope = name;
                 Visit(func.BlockContext);
 
                 foreach (Variable var in Variables.Values)
                 {
-                    if (var.Scope.master == oneTimeCreator)
-                        var.Scope = new Scope(oneTimeCreator, true);
+                    if (var.Scope.master == currentScope)
+                        var.Scope = new Scope(currentScope, true);
 
                     if (var.Scope.master == temp)
                         var.Scope = new Scope(temp, false);
                 }
 
-                oneTimeCreator = temp;
+                currentScope = temp;
 
                 if (func.ReturnType != Types.NULL)
                 {
                     if (func.ReturnValue == null)
                         throw new Exception($"Function \"{name}\" must return a value.");
-
                     return func.ReturnValue;
                 }
             }

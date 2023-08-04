@@ -3,11 +3,28 @@
 program: line* EOF;
 
 line: statement;
+lineWithoutFunctionDef: statementWithoutFunctionDef;
 
-statement: (varKeywords | funcKeywords | returnStatement | ifLogic);
+statement: (topLevelStatements | returnStatement | bottomLevelStatements | classKeywords | funcCall);
+statementWithoutFunctionDef: varAssignment | varDeclaration | returnStatement 
+| bottomLevelStatements | classKeywords | funcCall;
+
+topLevelStatements: (varAssignment | varDeclaration | funcDefinition);
+bottomLevelStatements: (ifLogic | loopKeywords);
 
 varKeywords: (varReassignment | varAssignment | varDeclaration);
 funcKeywords: (funcDefinition | funcCall);
+loopKeywords: (forLoop | whileLoop);
+classKeywords: (classDef | classVar | classVarReassignment | classAccess);
+
+virtualKeyword: 'virtual';
+abstractKeyword: 'abstract';
+overrideKeyword: 'override';
+
+classDef: abstractKeyword? 'class' IDENTIFIER ('extends' IDENTIFIER)? '{' topLevelStatements* '}';
+classVar: IDENTIFIER IDENTIFIER ';';
+classVarReassignment: IDENTIFIER '=' IDENTIFIER ';';
+classAccess: IDENTIFIER '.' (funcCall | varReassignment | varAssignment | IDENTIFIER) ';'?;
 
 returnStatement: 'return' expression ';';
 
@@ -21,11 +38,16 @@ ifLogic: 'if' '(' expression ')' block elseIfLogic* elseLogic?;
 elseIfLogic: 'else if' '(' expression ')' block;
 elseLogic: 'else' block;
 
-funcDefinition: 'func' IDENTIFIER '(' (varDeclaration (',' varDeclaration)*)? ')' ('->' varType)? block;
-funcCall: IDENTIFIER '(' (expression (',' expression)*)? ')' ';';
+forLoop: 'for' '(' varAssignment expression ';' expression')' block;
+whileLoop: 'while' '(' expression ')' block;
+
+funcDefinition: overrideKeyword? (virtualKeyword? abstractKeyword? | abstractKeyword? virtualKeyword?)
+	'func' IDENTIFIER '(' (varDeclaration (',' varDeclaration)*)? ')' ('->' varType)? (block | ';');
+funcCall: IDENTIFIER '(' (expression (',' expression)*)? ')' ';'?;
 
 expression
 : funcCall								#funcCallExpression
+| classAccess							#varAccessExpression
 | IDENTIFIER							#identifierExpression
 | expression multOp expression          #multiplicativeExpression
 | expression comparisonOps expression   #comparisonExpression
@@ -51,6 +73,6 @@ NULL: 'null';
 
 NEG_MOD: '-';
 
-block: '{' line* '}';
+block: '{' lineWithoutFunctionDef* '}';
 IDENTIFIER: [a-zA-Z@_] [a-zA-Z0-9_]*;
 WS: [ \t\r\n]+ -> skip;
