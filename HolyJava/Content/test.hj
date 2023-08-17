@@ -1,0 +1,13 @@
+﻿int a = 1;
+a++;
+
+static class Main
+{
+	int b = 4;
+	string name = "fefeee";
+
+	func PrintName()
+	{	
+		Printf(name);
+	}
+}

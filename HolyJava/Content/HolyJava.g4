@@ -5,26 +5,37 @@ program: line* EOF;
 line: statement;
 lineWithoutFunctionDef: statementWithoutFunctionDef;
 
-statement: (topLevelStatements | returnStatement | bottomLevelStatements | classKeywords | funcCall);
-statementWithoutFunctionDef: varAssignment | varDeclaration | returnStatement 
-| bottomLevelStatements | classKeywords | funcCall;
+statement: (topLevelStatements | returnStatement | bottomLevelStatements | includeKeyword
+| classKeywords | funcCall | includeCall | ppMM);
+statementWithoutFunctionDef: varKeywords | returnStatement 
+| bottomLevelStatements | classKeywords | funcCall | includeKeyword | ppMM;
 
-topLevelStatements: (varAssignment | varDeclaration | funcDefinition);
-bottomLevelStatements: (ifLogic | loopKeywords);
+topLevelStatements: (varKeywords | arrayKeywords | funcDefinition);
+bottomLevelStatements: (ifLogic | loopKeywords | arrayKeywords);
+
+skipMod: '#';
+overrideMod: '!';
+includeKeyword: (skipMod | overrideMod)? 'include' STRING ('as' IDENTIFIER)? ';';
+includeCall: IDENTIFIER '::' (funcCall | ppMM | arrayCall | classAccess | arraySet | varReassignment | IDENTIFIER) ';'?;
+
+ppMM: IDENTIFIER topLevelAddOp;
 
 varKeywords: (varReassignment | varAssignment | varDeclaration);
 funcKeywords: (funcDefinition | funcCall);
 loopKeywords: (forLoop | whileLoop);
 classKeywords: (classDef | classVar | classVarReassignment | classAccess);
+arrayKeywords: (arrayDefinition | arraySet);
 
 virtualKeyword: 'virtual';
 abstractKeyword: 'abstract';
 overrideKeyword: 'override';
 
-classDef: abstractKeyword? 'class' IDENTIFIER ('extends' IDENTIFIER)? '{' topLevelStatements* '}';
-classVar: IDENTIFIER IDENTIFIER ';';
+constructor: IDENTIFIER '(' (varDeclaration (',' varDeclaration)*)? ')' block;
+staticKeyword: 'static';
+classDef: staticKeyword? abstractKeyword? 'class' IDENTIFIER ('extends' IDENTIFIER)? '{' constructor topLevelStatements* '}';
+classVar: (IDENTIFIER | includeCall) IDENTIFIER ('=' (IDENTIFIER | includeCall) '(' (expression (',' expression)*)? ')')? ';';
 classVarReassignment: IDENTIFIER '=' IDENTIFIER ';';
-classAccess: IDENTIFIER '.' (funcCall | varReassignment | varAssignment | IDENTIFIER) ';'?;
+classAccess: IDENTIFIER '.' (funcCall | arrayCall | arraySet | varReassignment | varAssignment | IDENTIFIER) ';'?;
 
 returnStatement: 'return' expression ';';
 
@@ -32,7 +43,11 @@ varReassignment: IDENTIFIER '=' expression ';';
 varAssignment: varParameter '=' expression ';';
 varDeclaration: varParameter ';';
 varParameter: varType IDENTIFIER;
-varType: PRIMATIVE_INT | PRIMATIVE_STRING | PRIMATIVE_FLOAT | PRIMATIVE_BOOL;
+varType: PRIMATIVE_INT | PRIMATIVE_STRING | PRIMATIVE_FLOAT | PRIMATIVE_BOOL | PRIMATIVE_OBJECT;
+
+arrayDefinition: varParameter '=' varType '[' INT ']' ';';
+arrayCall: IDENTIFIER '[' INT ']';
+arraySet: IDENTIFIER '[' INT ']' '=' expression ';';
 
 ifLogic: 'if' '(' expression ')' block elseIfLogic* elseLogic?;
 elseIfLogic: 'else if' '(' expression ')' block;
@@ -46,17 +61,20 @@ funcDefinition: overrideKeyword? (virtualKeyword? abstractKeyword? | abstractKey
 funcCall: IDENTIFIER '(' (expression (',' expression)*)? ')' ';'?;
 
 expression
-: funcCall								#funcCallExpression
-| classAccess							#varAccessExpression
-| IDENTIFIER							#identifierExpression
-| expression multOp expression          #multiplicativeExpression
-| expression comparisonOps expression   #comparisonExpression
-| expression addOp expression	        #additiveExpression
-| constant								#constantExpression
+: funcCall											#funcCallExpression
+| includeCall										#includeCallExpression
+| arrayCall											#arrayCallExpression
+| classAccess										#varAccessExpression
+| IDENTIFIER										#identifierExpression
+| expression multOp expression						#multiplicativeExpression
+| expression comparisonOps expression				#comparisonExpression
+| expression (addOp | topLevelAddOp) expression		#additiveExpression
+| constant											#constantExpression
 ;
 
 multOp: '*' | '/';
 addOp: '+' | '-';
+topLevelAddOp: '++' | '--';
 comparisonOps: '<' | '>' | '<=' | '>=' | '==' | '!=';
 constant: INT | STRING | FLOAT | BOOL;
 
@@ -64,11 +82,13 @@ PRIMATIVE_INT: 'int';
 PRIMATIVE_FLOAT: 'float';
 PRIMATIVE_STRING: 'string';
 PRIMATIVE_BOOL: 'bool';
+PRIMATIVE_OBJECT: 'object';
 
 INT: (NEG_MOD NEG_MOD)? [0-9]+;
 FLOAT: (NEG_MOD NEG_MOD)? [0-9]+ '.' [0-9]+;
 STRING: ('"' ~'"'* '"') | ('\'' ~'\''* '\'');
 BOOL: 'true' | 'false';
+OBJECT: (INT | FLOAT | STRING | BOOL);
 NULL: 'null';
 
 NEG_MOD: '-';
